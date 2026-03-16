@@ -75,9 +75,9 @@ async function getAIResponse(userId, userMessage) {
 // =============================================
 
 // Webhook 1: log xóa & chỉnh sửa tin nhắn
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1482999564117213246/nZfml5gXAkLuuqS-W0jvUp6tCi-5mZINV1RbbfE6-G_TwRFx1S_b08wuTE3LWu752AUo';
 // Webhook 2: log lệnh .al
-const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/C5E4H1TJLSFPTNJQMBGPEKL0YDSUWD8LZBEB9KZG3LS2_QFGQCV2XYZ6XVNABS4YGEFZ';
+const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/c5e4h1TjLSfPtNJqMBGPekl0yDsUWD8LzBEb9kZG3LS2_QfgqCV2xYZ6XvNAbs4ygEFZ';
 const PREFIX = '.';
 const VOICE = 'vi';
 
