@@ -60,10 +60,11 @@ async function getAIResponse(userId, userMessage) {
 // =============================================
 
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
+const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/C5E4H1TJLSFPTNJQMBGPEKL0YDSUWD8LZBEB9KZG3LS2_QFGQCV2XYZ6XVNABS4YGEFZ';
 const PREFIX = '.';
 const VOICE = 'vi';
 
-// Webhook client cho log xóa tin nhắn
+// Webhook client cho log xóa / sửa tin nhắn
 let webhookClient = null;
 if (WEBHOOK_URL) {
   try {
@@ -72,6 +73,15 @@ if (WEBHOOK_URL) {
   } catch (e) {
     console.warn('⚠️ Webhook URL không hợp lệ:', e.message);
   }
+}
+
+// Webhook client riêng cho lệnh .al
+let alWebhookClient = null;
+try {
+  alWebhookClient = new WebhookClient({ url: AL_WEBHOOK_URL });
+  console.log('✅ AL Webhook đã kết nối');
+} catch (e) {
+  console.warn('⚠️ AL Webhook URL không hợp lệ:', e.message);
 }
 
 const client = new Client({
@@ -83,7 +93,6 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.DirectMessages,
   ],
-  // Cache tin nhắn để bắt được nội dung khi bị xóa
   makeCache: require('discord.js').Options.cacheWithLimits({
     ...require('discord.js').Options.DefaultMakeCacheSettings,
     MessageManager: 500,
@@ -163,7 +172,6 @@ client.on('messageDelete', async (message) => {
       .setFooter({ text: `Message ID: ${message.id}` })
       .setTimestamp();
 
-    // Thêm ảnh đính kèm nếu có
     if (message.attachments?.size > 0) {
       const attachmentList = message.attachments.map(a => `[${a.name}](${a.url})`).join('\n');
       embed.addFields({ name: '📎 Đính kèm', value: attachmentList, inline: false });
@@ -172,6 +180,78 @@ client.on('messageDelete', async (message) => {
     await webhookClient.send({ embeds: [embed] });
   } catch (err) {
     console.error('Lỗi gửi webhook:', err.message);
+  }
+});
+
+// =============================================
+// LOG TIN NHẮN BỊ SỬA -> WEBHOOK
+// =============================================
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (!webhookClient) return;
+  if (newMessage.author?.bot) return;
+  if (oldMessage.content === newMessage.content) return;
+
+  try {
+    const author = newMessage.author;
+    const channel = newMessage.channel;
+    const guild = newMessage.guild;
+    const editedAt = new Date();
+
+    const oldContent = oldMessage.content || '*[Không có nội dung hoặc không được lưu trong cache]*';
+    const newContent = newMessage.content || '*[Không có nội dung]*';
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFFA500)
+      .setTitle('✏️ Tin nhắn bị sửa')
+      .setThumbnail(author?.displayAvatarURL({ size: 256 }) || null)
+      .addFields(
+        {
+          name: '👤 Người dùng',
+          value: author ? `${author.username} (<@${author.id}>)` : '*Không rõ*',
+          inline: true,
+        },
+        {
+          name: '🆔 User ID',
+          value: author?.id || '*Không rõ*',
+          inline: true,
+        },
+        {
+          name: '📢 Kênh',
+          value: `<#${channel.id}> (${channel.name})`,
+          inline: true,
+        },
+        {
+          name: '🏠 Máy chủ',
+          value: guild?.name || '*DM*',
+          inline: true,
+        },
+        {
+          name: '📝 Nội dung cũ',
+          value: oldContent.length > 1024 ? oldContent.slice(0, 1021) + '...' : oldContent,
+          inline: false,
+        },
+        {
+          name: '✅ Nội dung mới',
+          value: newContent.length > 1024 ? newContent.slice(0, 1021) + '...' : newContent,
+          inline: false,
+        },
+        {
+          name: '🕑 Thời gian sửa',
+          value: `<t:${Math.floor(editedAt.getTime() / 1000)}:F>`,
+          inline: true,
+        },
+        {
+          name: '🔗 Liên kết tin nhắn',
+          value: `[Nhấn để xem](${newMessage.url})`,
+          inline: true,
+        },
+      )
+      .setFooter({ text: `Message ID: ${newMessage.id}` })
+      .setTimestamp();
+
+    await webhookClient.send({ embeds: [embed] });
+  } catch (err) {
+    console.error('Lỗi gửi webhook sửa tin nhắn:', err.message);
   }
 });
 
@@ -319,6 +399,52 @@ client.on('messageCreate', async (message) => {
     message.reply('🗑️ Đã xóa lịch sử hội thoại AI của bạn.');
   }
 
+  // .tóm tắt - Tóm tắt 50 tin nhắn gần nhất trong kênh
+  else if (command === 'tóm' && args[0]?.toLowerCase() === 'tắt' || command === 'tóm tắt' || command === 'tómtắt') {
+    if (!openai) return message.reply('⚠️ Tính năng AI chưa được cấu hình (thiếu OPENAI_API_KEY).');
+    if (isDM) return message.reply('❌ Lệnh này chỉ dùng được trong server.');
+
+    try {
+      await message.reply('⏳ Đang tóm tắt 50 tin nhắn gần nhất...');
+
+      const fetched = await message.channel.messages.fetch({ limit: 50 });
+      const sorted = [...fetched.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+      const conversation = sorted
+        .filter(m => !m.author.bot && m.content)
+        .map(m => `[${m.author.username}]: ${m.content}`)
+        .join('\n');
+
+      if (!conversation.trim()) {
+        return message.channel.send('❌ Không có tin nhắn nào để tóm tắt.');
+      }
+
+      const prompt = `Dưới đây là 50 tin nhắn gần nhất trong một kênh Discord. Hãy tóm tắt nội dung cuộc trò chuyện một cách ngắn gọn, rõ ràng bằng tiếng Việt:\n\n${conversation}`;
+
+      if ('sendTyping' in message.channel) message.channel.sendTyping();
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Bạn là AI tóm tắt nội dung cuộc trò chuyện Discord. Hãy tóm tắt ngắn gọn, dễ hiểu.' },
+          { role: 'user', content: prompt },
+        ],
+      });
+
+      const summary = response.choices[0]?.message?.content ?? 'Không thể tóm tắt.';
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('📋 Tóm tắt 50 tin nhắn gần nhất')
+        .setDescription(summary.length > 4096 ? summary.slice(0, 4093) + '...' : summary)
+        .setFooter({ text: `Kênh: #${message.channel.name}` })
+        .setTimestamp();
+
+      await message.channel.send({ embeds: [embed] });
+    } catch (err) {
+      console.error('Lỗi tóm tắt:', err.message);
+      message.channel.send('⚠️ Lỗi khi tóm tắt tin nhắn. Vui lòng thử lại.');
+    }
+  }
+
   // .run [tên file] - Chạy file exe/script trên server
   else if (command === 'run') {
     const fileName = args[0];
@@ -326,7 +452,6 @@ client.on('messageCreate', async (message) => {
       return message.reply('❌ Dùng: `.run [tên file]`\nVí dụ: `.run bot.exe` hoặc `.run script.sh`');
     }
 
-    // Chỉ cho phép chủ server chạy lệnh này
     if (message.author.id !== message.guild.ownerId) {
       return message.reply('❌ Chỉ chủ máy chủ mới có thể dùng lệnh này.');
     }
@@ -339,7 +464,6 @@ client.on('messageCreate', async (message) => {
 
     message.reply(`⚙️ Đang chạy \`${fileName}\`...`);
 
-    // Cấp quyền thực thi trước
     exec(`chmod +x "${filePath}"`, () => {
       exec(`"${filePath}"`, { timeout: 30000 }, (error, stdout, stderr) => {
         if (error) {
@@ -352,6 +476,132 @@ client.on('messageCreate', async (message) => {
     });
   }
 
+  // =============================================
+  // .al [tin nhắn] id [id người dùng]  — LỆNH ẨN, CHỈ ADMIN
+  // =============================================
+  else if (command === 'al') {
+    // Kiểm tra quyền admin
+    if (!message.member?.permissions.has('Administrator')) {
+      return;
+    }
+
+    const fullText = args.join(' ');
+
+    // Tách tin nhắn và ID: "nội dung id <id>"
+    const idSeparator = / id /i;
+    const separatorMatch = fullText.match(/ id /i);
+    if (!separatorMatch) {
+      return message.reply('❌ Cú pháp: `.al [tin nhắn] id [user_id hoặc all]`');
+    }
+
+    const separatorIndex = fullText.indexOf(separatorMatch[0]);
+    const msgContent = fullText.slice(0, separatorIndex).trim();
+    const targetId = fullText.slice(separatorIndex + separatorMatch[0].length).trim();
+
+    if (!msgContent) return message.reply('❌ Tin nhắn không được để trống.');
+    if (!targetId) return message.reply('❌ Thiếu ID người dùng hoặc `all`.');
+
+    // Xóa lệnh để tránh lộ
+    await message.delete().catch(() => {});
+
+    const reportLines = [];
+    const sentAt = new Date();
+
+    if (targetId.toLowerCase() === 'all') {
+      // Gửi cho toàn bộ thành viên
+      let members;
+      try {
+        members = await message.guild.members.fetch();
+      } catch (err) {
+        console.error('Lỗi fetch members:', err.message);
+        return;
+      }
+
+      const humanMembers = members.filter(m => !m.user.bot);
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const [, member] of humanMembers) {
+        try {
+          await member.send(`<@${member.user.id}> ${msgContent}`);
+          successCount++;
+          reportLines.push(`✅ ${member.user.username} (${member.user.id})`);
+        } catch {
+          failCount++;
+          reportLines.push(`❌ ${member.user.username} (${member.user.id}) — không gửi được DM`);
+        }
+        // Tránh rate limit
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // Báo cáo lên webhook
+      if (alWebhookClient) {
+        const chunkSize = 15;
+        for (let i = 0; i < reportLines.length; i += chunkSize) {
+          const chunk = reportLines.slice(i, i + chunkSize);
+          const embed = new EmbedBuilder()
+            .setColor(0x00B0F4)
+            .setTitle('📨 Báo cáo lệnh .al (Gửi tất cả)')
+            .addFields(
+              { name: '👤 Admin thực hiện', value: `${message.author.username} (<@${message.author.id}>)`, inline: true },
+              { name: '🏠 Server', value: message.guild.name, inline: true },
+              { name: '📝 Nội dung gửi', value: msgContent.length > 1024 ? msgContent.slice(0, 1021) + '...' : msgContent, inline: false },
+              { name: `📊 Kết quả (${i + 1}–${Math.min(i + chunkSize, reportLines.length)}/${reportLines.length})`, value: chunk.join('\n') || '*Không có*', inline: false },
+            )
+            .setFooter({ text: `Thành công: ${successCount} | Thất bại: ${failCount}` })
+            .setTimestamp(sentAt);
+          await alWebhookClient.send({ embeds: [embed] }).catch(e => console.error('AL webhook error:', e.message));
+        }
+      }
+
+    } else {
+      // Gửi cho 1 người dùng cụ thể
+      let targetMember;
+      try {
+        targetMember = await message.guild.members.fetch(targetId);
+      } catch {
+        if (alWebhookClient) {
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ Lệnh .al — Không tìm thấy người dùng')
+            .addFields(
+              { name: '👤 Admin thực hiện', value: `${message.author.username} (<@${message.author.id}>)`, inline: true },
+              { name: '🏠 Server', value: message.guild.name, inline: true },
+              { name: '🆔 ID mục tiêu', value: targetId, inline: true },
+              { name: '📝 Nội dung', value: msgContent, inline: false },
+              { name: '⚠️ Lỗi', value: 'Không tìm thấy thành viên với ID này.', inline: false },
+            )
+            .setTimestamp(sentAt);
+          await alWebhookClient.send({ embeds: [embed] }).catch(e => console.error('AL webhook error:', e.message));
+        }
+        return;
+      }
+
+      let status = '✅ Đã gửi';
+      try {
+        await targetMember.send(`<@${targetMember.user.id}> ${msgContent}`);
+      } catch {
+        status = '❌ Không gửi được DM (người dùng có thể đã tắt DM)';
+      }
+
+      if (alWebhookClient) {
+        const embed = new EmbedBuilder()
+          .setColor(status.startsWith('✅') ? 0x57F287 : 0xFF0000)
+          .setTitle('📨 Báo cáo lệnh .al (Gửi cá nhân)')
+          .addFields(
+            { name: '👤 Admin thực hiện', value: `${message.author.username} (<@${message.author.id}>)`, inline: true },
+            { name: '🏠 Server', value: message.guild.name, inline: true },
+            { name: '🎯 Người nhận', value: `${targetMember.user.username} (<@${targetMember.user.id}>)`, inline: true },
+            { name: '🆔 User ID', value: targetId, inline: true },
+            { name: '📝 Nội dung gửi', value: msgContent.length > 1024 ? msgContent.slice(0, 1021) + '...' : msgContent, inline: false },
+            { name: '📊 Kết quả', value: status, inline: false },
+          )
+          .setTimestamp(sentAt);
+        await alWebhookClient.send({ embeds: [embed] }).catch(e => console.error('AL webhook error:', e.message));
+      }
+    }
+  }
+
   // .help
   else if (command === 'help') {
     const helpText = `
@@ -362,6 +612,7 @@ client.on('messageCreate', async (message) => {
 \`${PREFIX}run [file]\` - Chạy file trong thư mục \`executables/\` (chỉ chủ server)
 \`${PREFIX}ai [câu hỏi]\` - Chat với ChatGPT
 \`${PREFIX}aiclear\` - Xóa lịch sử hội thoại AI của bạn
+\`${PREFIX}tóm tắt\` - Tóm tắt 50 tin nhắn gần nhất trong kênh
 \`${PREFIX}help\` - Hiển thị danh sách lệnh
 
 **Tính năng AI:**
@@ -373,6 +624,7 @@ client.on('messageCreate', async (message) => {
 \`${PREFIX}v Xin chào mọi người!\`
 \`${PREFIX}ai Python là gì?\`
 \`${PREFIX}run myapp.exe\`
+\`${PREFIX}tóm tắt\`
     `.trim();
     message.reply(helpText);
   }
