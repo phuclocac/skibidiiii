@@ -43,7 +43,7 @@ if (GROQ_API_KEY) {
   aiProvider = 'OpenAI';
 }
 
-const AI_MODEL = GROQ_API_KEY ? 'llama3-70b-8192' : 'gpt-4o-mini';
+const AI_MODEL = GROQ_API_KEY ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
 
 const AI_SYSTEM_PROMPT = `Bạn là một AI assistant thông minh và thân thiện được tích hợp vào Discord.
 Hãy trả lời ngắn gọn, rõ ràng và phù hợp với ngữ cảnh chat Discord.
