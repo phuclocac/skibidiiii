@@ -68,22 +68,20 @@ const VOICE = 'vi';
 
 // Webhook client cho log xóa / sửa tin nhắn
 let webhookClient = null;
-if (WEBHOOK_URL) {
-  try {
-    webhookClient = new WebhookClient({ url: WEBHOOK_URL });
-    console.log('✅ Webhook đã kết nối');
-  } catch (e) {
-    console.warn('⚠️ Webhook URL không hợp lệ:', e.message);
-  }
+try {
+  webhookClient = new WebhookClient({ url: WEBHOOK_URL });
+  console.log('✅ Webhook 1 (log xóa/sửa) đã khởi tạo');
+} catch (e) {
+  console.error('❌ Webhook 1 lỗi khởi tạo:', e.message);
 }
 
 // Webhook client riêng cho lệnh .al
 let alWebhookClient = null;
 try {
   alWebhookClient = new WebhookClient({ url: AL_WEBHOOK_URL });
-  console.log('✅ AL Webhook đã kết nối');
+  console.log('✅ Webhook 2 (lệnh .al) đã khởi tạo');
 } catch (e) {
-  console.warn('⚠️ AL Webhook URL không hợp lệ:', e.message);
+  console.error('❌ Webhook 2 lỗi khởi tạo:', e.message);
 }
 
 const client = new Client({
@@ -104,11 +102,39 @@ const client = new Client({
 const connections = new Map();
 const players = new Map();
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
   console.log(`Prefix: ${PREFIX}`);
   if (openai) console.log('🤖 AI (ChatGPT) đã sẵn sàng');
   else console.warn('⚠️ AI bị tắt — thêm OPENAI_API_KEY vào biến môi trường');
+
+  // Kiểm tra webhook 1 khi khởi động
+  if (webhookClient) {
+    try {
+      await webhookClient.send({
+        content: `🟢 Bot **${client.user.tag}** đã online — Webhook 1 (log xóa/sửa) hoạt động bình thường.`,
+      });
+      console.log('✅ Webhook 1 test thành công');
+    } catch (e) {
+      console.error('❌ Webhook 1 test thất bại:', e.message);
+    }
+  } else {
+    console.error('❌ Webhook 1 chưa được khởi tạo');
+  }
+
+  // Kiểm tra webhook 2 khi khởi động
+  if (alWebhookClient) {
+    try {
+      await alWebhookClient.send({
+        content: `🟢 Bot **${client.user.tag}** đã online — Webhook 2 (lệnh .al) hoạt động bình thường.`,
+      });
+      console.log('✅ Webhook 2 test thành công');
+    } catch (e) {
+      console.error('❌ Webhook 2 test thất bại:', e.message);
+    }
+  } else {
+    console.error('❌ Webhook 2 chưa được khởi tạo');
+  }
 });
 
 // =============================================
@@ -391,6 +417,9 @@ client.on('messageCreate', async (message) => {
       }
     } catch (err) {
       clearInterval(typingInterval);
+      if (err.status === 429 || err.message?.includes('429')) {
+        return message.reply('❌ **Tài khoản OpenAI hết quota!** Vào https://platform.openai.com/account/billing để nạp tiền.');
+      }
       message.reply('⚠️ Lỗi khi gọi AI. Vui lòng thử lại.');
     }
   }
@@ -450,6 +479,13 @@ client.on('messageCreate', async (message) => {
         });
       } catch (aiErr) {
         console.error('Lỗi OpenAI:', aiErr);
+        if (aiErr.status === 429 || aiErr.message?.includes('429')) {
+          return message.channel.send(
+            '❌ **Tài khoản OpenAI hết quota!**\n' +
+            '> Bạn cần vào **https://platform.openai.com/account/billing** để nạp tiền hoặc kiểm tra gói dịch vụ.\n' +
+            '> Sau khi nạp tiền, lệnh `.tóm tắt` sẽ hoạt động bình thường.'
+          );
+        }
         return message.channel.send(`⚠️ Lỗi kết nối AI: ${aiErr.message}`);
       }
 
