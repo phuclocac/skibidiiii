@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, WebhookClient, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, WebhookClient, EmbedBuilder, ChannelType } = require('discord.js');
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -12,6 +12,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
+const OpenAI = require('openai').default;
 
 const edgeTTS = require('./edge-tts-wrapper');
 
@@ -20,6 +21,43 @@ if (!TOKEN) {
   console.error('❌ Thiếu DISCORD_TOKEN!');
   process.exit(1);
 }
+
+// =============================================
+// CẤU HÌNH AI (ChatGPT)
+// =============================================
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const openai = OPENAI_API_KEY
+  ? new OpenAI({ apiKey: OPENAI_API_KEY })
+  : null;
+
+const AI_SYSTEM_PROMPT = `Bạn là một AI assistant thông minh và thân thiện được tích hợp vào Discord.
+Hãy trả lời ngắn gọn, rõ ràng và phù hợp với ngữ cảnh chat Discord.
+Bạn trả lời bằng cùng ngôn ngữ với người dùng (tiếng Việt hoặc tiếng Anh).`;
+
+const conversationHistory = new Map();
+const MAX_HISTORY = 10;
+
+async function getAIResponse(userId, userMessage) {
+  if (!openai) return '⚠️ Tính năng AI chưa được cấu hình (thiếu OPENAI_API_KEY).';
+  if (!conversationHistory.has(userId)) conversationHistory.set(userId, []);
+  const history = conversationHistory.get(userId);
+  history.push({ role: 'user', content: userMessage });
+  if (history.length > MAX_HISTORY * 2) history.splice(0, 2);
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...history],
+    });
+    const reply = response.choices[0]?.message?.content ?? 'Xin lỗi, tôi không thể trả lời lúc này.';
+    history.push({ role: 'assistant', content: reply });
+    return reply;
+  } catch (error) {
+    console.error('OpenAI error:', error.message);
+    return '⚠️ Lỗi khi kết nối AI. Vui lòng thử lại sau.';
+  }
+}
+
+// =============================================
 
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
 const PREFIX = '.';
@@ -43,6 +81,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.DirectMessages,
   ],
   // Cache tin nhắn để bắt được nội dung khi bị xóa
   makeCache: require('discord.js').Options.cacheWithLimits({
@@ -57,6 +96,8 @@ const players = new Map();
 client.once('ready', () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
   console.log(`Prefix: ${PREFIX}`);
+  if (openai) console.log('🤖 AI (ChatGPT) đã sẵn sàng');
+  else console.warn('⚠️ AI bị tắt — thêm OPENAI_API_KEY vào biến môi trường');
 });
 
 // =============================================
@@ -139,6 +180,32 @@ client.on('messageDelete', async (message) => {
 // =============================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+
+  // ── AI: trả lời khi @mention hoặc DM ─────────────────────────────
+  const isDM = message.channel.type === ChannelType.DM;
+  const isMentioned = message.mentions.has(client.user);
+  if ((isDM || isMentioned) && !message.content.startsWith(PREFIX)) {
+    let userMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
+    if (!userMessage) return message.reply('Bạn muốn hỏi gì? Hãy nhập câu hỏi!');
+    if ('sendTyping' in message.channel) message.channel.sendTyping();
+    const typingInterval = setInterval(() => {
+      if ('sendTyping' in message.channel) message.channel.sendTyping();
+    }, 5000);
+    try {
+      const reply = await getAIResponse(message.author.id, userMessage);
+      clearInterval(typingInterval);
+      if (reply.length > 2000) {
+        for (const chunk of reply.match(/[\s\S]{1,2000}/g)) await message.reply(chunk);
+      } else {
+        await message.reply(reply);
+      }
+    } catch (err) {
+      clearInterval(typingInterval);
+      await message.reply('⚠️ Lỗi khi gọi AI.');
+    }
+    return;
+  }
+
   if (!message.content.startsWith(PREFIX)) return;
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
@@ -224,6 +291,34 @@ client.on('messageCreate', async (message) => {
     }
   }
 
+  // .ai [câu hỏi] - Chat với ChatGPT
+  else if (command === 'ai') {
+    const userMessage = args.join(' ');
+    if (!userMessage) return message.reply('❌ Vui lòng nhập câu hỏi! Ví dụ: `.ai Python là gì?`');
+    if ('sendTyping' in message.channel) message.channel.sendTyping();
+    const typingInterval = setInterval(() => {
+      if ('sendTyping' in message.channel) message.channel.sendTyping();
+    }, 5000);
+    try {
+      const reply = await getAIResponse(message.author.id, userMessage);
+      clearInterval(typingInterval);
+      if (reply.length > 2000) {
+        for (const chunk of reply.match(/[\s\S]{1,2000}/g)) await message.reply(chunk);
+      } else {
+        await message.reply(reply);
+      }
+    } catch (err) {
+      clearInterval(typingInterval);
+      message.reply('⚠️ Lỗi khi gọi AI. Vui lòng thử lại.');
+    }
+  }
+
+  // .aiclear - Xóa lịch sử hội thoại AI
+  else if (command === 'aiclear') {
+    conversationHistory.delete(message.author.id);
+    message.reply('🗑️ Đã xóa lịch sử hội thoại AI của bạn.');
+  }
+
   // .run [tên file] - Chạy file exe/script trên server
   else if (command === 'run') {
     const fileName = args[0];
@@ -265,11 +360,18 @@ client.on('messageCreate', async (message) => {
 \`${PREFIX}v [nội dung]\` - Bot đọc nội dung bằng giọng nói
 \`${PREFIX}leave\` - Bot rời kênh thoại
 \`${PREFIX}run [file]\` - Chạy file trong thư mục \`executables/\` (chỉ chủ server)
+\`${PREFIX}ai [câu hỏi]\` - Chat với ChatGPT
+\`${PREFIX}aiclear\` - Xóa lịch sử hội thoại AI của bạn
 \`${PREFIX}help\` - Hiển thị danh sách lệnh
+
+**Tính năng AI:**
+• Tag bot \`@Bot [câu hỏi]\` để chat với ChatGPT trong server
+• Nhắn DM trực tiếp cho bot để chat riêng
 
 **Ví dụ:**
 \`${PREFIX}join\`
 \`${PREFIX}v Xin chào mọi người!\`
+\`${PREFIX}ai Python là gì?\`
 \`${PREFIX}run myapp.exe\`
     `.trim();
     message.reply(helpText);

@@ -27,10 +27,8 @@ async function fetchAudio(url) {
 }
 
 async function synthesize(text, voice = 'vi-VN-HoaiMyNeural') {
-  // Use Vietnamese language for Google TTS
   const lang = 'vi';
 
-  // Google TTS has 200 char limit per request, handle long text
   if (text.length <= 200) {
     const url = googleTTS.getAudioUrl(text, {
       lang: lang,
@@ -39,7 +37,6 @@ async function synthesize(text, voice = 'vi-VN-HoaiMyNeural') {
     });
     return await fetchAudio(url);
   } else {
-    // For long text, get multiple URLs and concatenate
     const urls = googleTTS.getAllAudioUrls(text, {
       lang: lang,
       slow: false,
