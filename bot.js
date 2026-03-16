@@ -244,14 +244,16 @@ client.on('messageCreate', async (message) => {
 
     message.reply(`⚙️ Đang chạy \`${fileName}\`...`);
 
-    exec(`"${filePath}"`, { timeout: 30000 }, (error, stdout, stderr) => {
-      if (error) {
-        const errMsg = error.message.slice(0, 1900);
-        return message.channel.send(`❌ Lỗi khi chạy:\n\`\`\`\n${errMsg}\n\`\`\``);
-      }
-
-      const output = (stdout || stderr || '(Không có output)').slice(0, 1900);
-      message.channel.send(`✅ Kết quả \`${fileName}\`:\n\`\`\`\n${output}\n\`\`\``);
+    // Cấp quyền thực thi trước
+    exec(`chmod +x "${filePath}"`, () => {
+      exec(`"${filePath}"`, { timeout: 30000 }, (error, stdout, stderr) => {
+        if (error) {
+          const errMsg = error.message.slice(0, 1900);
+          return message.channel.send(`❌ Lỗi khi chạy:\n\`\`\`\n${errMsg}\n\`\`\``);
+        }
+        const output = (stdout || stderr || '(Không có output)').slice(0, 1900);
+        message.channel.send(`✅ Kết quả \`${fileName}\`:\n\`\`\`\n${output}\n\`\`\``);
+      });
     });
   }
 
