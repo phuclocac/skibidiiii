@@ -59,7 +59,9 @@ async function getAIResponse(userId, userMessage) {
 
 // =============================================
 
-const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
+// Webhook 1: log xóa & chỉnh sửa tin nhắn
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
+// Webhook 2: log lệnh .al
 const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/C5E4H1TJLSFPTNJQMBGPEKL0YDSUWD8LZBEB9KZG3LS2_QFGQCV2XYZ6XVNABS4YGEFZ';
 const PREFIX = '.';
 const VOICE = 'vi';
@@ -400,48 +402,69 @@ client.on('messageCreate', async (message) => {
   }
 
   // .tóm tắt - Tóm tắt 50 tin nhắn gần nhất trong kênh
-  else if (command === 'tóm' && args[0]?.toLowerCase() === 'tắt' || command === 'tóm tắt' || command === 'tómtắt') {
+  else if (
+    (command === 'tóm' && args[0]?.toLowerCase() === 'tắt') ||
+    command === 'tómtắt'
+  ) {
     if (!openai) return message.reply('⚠️ Tính năng AI chưa được cấu hình (thiếu OPENAI_API_KEY).');
     if (isDM) return message.reply('❌ Lệnh này chỉ dùng được trong server.');
 
     try {
       await message.reply('⏳ Đang tóm tắt 50 tin nhắn gần nhất...');
 
-      const fetched = await message.channel.messages.fetch({ limit: 50 });
+      // Fetch 50 tin nhắn, bao gồm cả tin nhắn vừa reply
+      let fetched;
+      try {
+        fetched = await message.channel.messages.fetch({ limit: 50 });
+      } catch (fetchErr) {
+        console.error('Lỗi fetch messages:', fetchErr);
+        return message.channel.send(`⚠️ Không thể đọc lịch sử tin nhắn: ${fetchErr.message}`);
+      }
+
       const sorted = [...fetched.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
+      // Bao gồm cả tin nhắn bot trừ tin nhắn hệ thống, giữ context đầy đủ
       const conversation = sorted
-        .filter(m => !m.author.bot && m.content)
-        .map(m => `[${m.author.username}]: ${m.content}`)
+        .filter(m => m.content && m.content.trim())
+        .map(m => `[${m.author.bot ? '🤖' : ''}${m.author.username}]: ${m.content}`)
         .join('\n');
 
       if (!conversation.trim()) {
         return message.channel.send('❌ Không có tin nhắn nào để tóm tắt.');
       }
 
-      const prompt = `Dưới đây là 50 tin nhắn gần nhất trong một kênh Discord. Hãy tóm tắt nội dung cuộc trò chuyện một cách ngắn gọn, rõ ràng bằng tiếng Việt:\n\n${conversation}`;
+      // Cắt bớt nếu quá dài (giới hạn ~3000 ký tự để tránh vượt token)
+      const truncated = conversation.length > 3000 ? conversation.slice(-3000) : conversation;
 
       if ('sendTyping' in message.channel) message.channel.sendTyping();
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Bạn là AI tóm tắt nội dung cuộc trò chuyện Discord. Hãy tóm tắt ngắn gọn, dễ hiểu.' },
-          { role: 'user', content: prompt },
-        ],
-      });
+
+      let response;
+      try {
+        response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Bạn là AI tóm tắt nội dung cuộc trò chuyện Discord. Hãy tóm tắt ngắn gọn, dễ hiểu bằng tiếng Việt.' },
+            { role: 'user', content: `Tóm tắt cuộc trò chuyện này:\n\n${truncated}` },
+          ],
+          max_tokens: 800,
+        });
+      } catch (aiErr) {
+        console.error('Lỗi OpenAI:', aiErr);
+        return message.channel.send(`⚠️ Lỗi kết nối AI: ${aiErr.message}`);
+      }
 
       const summary = response.choices[0]?.message?.content ?? 'Không thể tóm tắt.';
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('📋 Tóm tắt 50 tin nhắn gần nhất')
         .setDescription(summary.length > 4096 ? summary.slice(0, 4093) + '...' : summary)
-        .setFooter({ text: `Kênh: #${message.channel.name}` })
+        .setFooter({ text: `Kênh: #${message.channel.name} • ${sorted.length} tin nhắn` })
         .setTimestamp();
 
       await message.channel.send({ embeds: [embed] });
     } catch (err) {
-      console.error('Lỗi tóm tắt:', err.message);
-      message.channel.send('⚠️ Lỗi khi tóm tắt tin nhắn. Vui lòng thử lại.');
+      console.error('Lỗi tóm tắt (unexpected):', err);
+      message.channel.send(`⚠️ Lỗi không xác định: ${err.message}`);
     }
   }
 
