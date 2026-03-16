@@ -23,12 +23,27 @@ if (!TOKEN) {
 }
 
 // =============================================
-// CẤU HÌNH AI (ChatGPT)
+// CẤU HÌNH AI
+// Ưu tiên: Groq (miễn phí) → OpenAI (trả phí)
 // =============================================
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const openai = OPENAI_API_KEY
-  ? new OpenAI({ apiKey: OPENAI_API_KEY })
-  : null;
+
+let openai = null;
+let aiProvider = null;
+
+if (GROQ_API_KEY) {
+  openai = new OpenAI({
+    apiKey: GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+  });
+  aiProvider = 'Groq (miễn phí)';
+} else if (OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  aiProvider = 'OpenAI';
+}
+
+const AI_MODEL = GROQ_API_KEY ? 'llama3-70b-8192' : 'gpt-4o-mini';
 
 const AI_SYSTEM_PROMPT = `Bạn là một AI assistant thông minh và thân thiện được tích hợp vào Discord.
 Hãy trả lời ngắn gọn, rõ ràng và phù hợp với ngữ cảnh chat Discord.
@@ -45,7 +60,7 @@ async function getAIResponse(userId, userMessage) {
   if (history.length > MAX_HISTORY * 2) history.splice(0, 2);
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: AI_MODEL,
       messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...history],
     });
     const reply = response.choices[0]?.message?.content ?? 'Xin lỗi, tôi không thể trả lời lúc này.';
@@ -105,8 +120,8 @@ const players = new Map();
 client.once('ready', async () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
   console.log(`Prefix: ${PREFIX}`);
-  if (openai) console.log('🤖 AI (ChatGPT) đã sẵn sàng');
-  else console.warn('⚠️ AI bị tắt — thêm OPENAI_API_KEY vào biến môi trường');
+  if (openai) console.log(`🤖 AI đã sẵn sàng — Provider: ${aiProvider} | Model: ${AI_MODEL}`);
+  else console.warn('⚠️ AI bị tắt — thêm GROQ_API_KEY (miễn phí) hoặc OPENAI_API_KEY vào biến môi trường');
 
   // Kiểm tra webhook 1 khi khởi động
   if (webhookClient) {
@@ -470,7 +485,7 @@ client.on('messageCreate', async (message) => {
       let response;
       try {
         response = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: AI_MODEL,
           messages: [
             { role: 'system', content: 'Bạn là AI tóm tắt nội dung cuộc trò chuyện Discord. Hãy tóm tắt ngắn gọn, dễ hiểu bằng tiếng Việt.' },
             { role: 'user', content: `Tóm tắt cuộc trò chuyện này:\n\n${truncated}` },
@@ -481,9 +496,9 @@ client.on('messageCreate', async (message) => {
         console.error('Lỗi OpenAI:', aiErr);
         if (aiErr.status === 429 || aiErr.message?.includes('429')) {
           return message.channel.send(
-            '❌ **Tài khoản OpenAI hết quota!**\n' +
-            '> Bạn cần vào **https://platform.openai.com/account/billing** để nạp tiền hoặc kiểm tra gói dịch vụ.\n' +
-            '> Sau khi nạp tiền, lệnh `.tóm tắt` sẽ hoạt động bình thường.'
+            '❌ **Hết quota AI!**\n' +
+            '> Dùng **Groq miễn phí**: đăng ký tại https://console.groq.com → lấy API key → thêm vào Railway với tên `GROQ_API_KEY`\n' +
+            '> Hoặc nạp tiền OpenAI tại https://platform.openai.com/account/billing'
           );
         }
         return message.channel.send(`⚠️ Lỗi kết nối AI: ${aiErr.message}`);
