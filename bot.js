@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, WebhookClient, EmbedBuilder, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, WebhookClient, EmbedBuilder, ChannelType } = require('discord.js');
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -99,6 +99,9 @@ try {
   console.error('❌ Webhook 2 lỗi khởi tạo:', e.message);
 }
 
+// ID chủ sở hữu — nhận thông báo khi có người nhắn DM cho bot
+const OWNER_ID = '1109108708371349504';
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -107,6 +110,13 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.DirectMessageReactions,
+  ],
+  // Partials cần thiết để nhận sự kiện DM và tin nhắn bị xóa/sửa
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
   ],
   makeCache: require('discord.js').Options.cacheWithLimits({
     ...require('discord.js').Options.DefaultMakeCacheSettings,
@@ -307,6 +317,37 @@ client.on('messageCreate', async (message) => {
   // ── AI: trả lời khi @mention hoặc DM ─────────────────────────────
   const isDM = message.channel.type === ChannelType.DM;
   const isMentioned = message.mentions.has(client.user);
+
+  // Thông báo cho chủ khi có người nhắn DM cho bot
+  if (isDM && message.author.id !== OWNER_ID) {
+    try {
+      const owner = await client.users.fetch(OWNER_ID);
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('📩 Có người nhắn DM cho bot')
+        .setThumbnail(message.author.displayAvatarURL({ size: 256 }))
+        .addFields(
+          { name: '👤 Tên', value: message.author.username, inline: true },
+          { name: '🆔 ID', value: message.author.id, inline: true },
+          { name: '🏷️ Tag', value: `<@${message.author.id}>`, inline: true },
+          { name: '📝 Nội dung', value: message.content || '*[Không có nội dung]*', inline: false },
+          { name: '🕐 Thời gian', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false },
+        )
+        .setFooter({ text: `User ID: ${message.author.id}` })
+        .setTimestamp();
+
+      // Thêm ảnh đính kèm nếu có
+      if (message.attachments?.size > 0) {
+        const list = message.attachments.map(a => `[${a.name}](${a.url})`).join('\n');
+        dmEmbed.addFields({ name: '📎 Đính kèm', value: list, inline: false });
+      }
+
+      await owner.send({ embeds: [dmEmbed] });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo DM cho chủ:', e.message);
+    }
+  }
+
   if ((isDM || isMentioned) && !message.content.startsWith(PREFIX)) {
     let userMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
     if (!userMessage) return message.reply('Bạn muốn hỏi gì? Hãy nhập câu hỏi!');
