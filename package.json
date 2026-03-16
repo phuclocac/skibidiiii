@@ -1,8 +1,26 @@
-[phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg", "gcc", "gnumake"]
-
-[phases.install]
-cmds = ["npm install"]
-
-[start]
-cmd = "node bot.js"
+{
+  "name": "discord-tts-bot",
+  "version": "1.0.0",
+  "description": "Discord TTS Bot with Google TTS voice",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@discordjs/voice": "^0.19.1",
+    "discord.js": "^14.25.1",
+    "google-tts-api": "^2.0.2",
+    "openai": "^4.103.0",
+    "opusscript": "^0.0.8",
+    "prism-media": "^1.3.5",
+    "ws": "^8.19.0"
+  }
+}
