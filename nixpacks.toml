@@ -1,11 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg", "python3", "gcc", "gnumake"]
+nixPkgs = ["nodejs_20", "ffmpeg", "gcc", "gnumake"]
 
 [phases.install]
-cmds = [
-  "npm install",
-  "pip install edge-tts --break-system-packages"
-]
+cmds = ["npm install"]
 
 [start]
 cmd = "node bot.js"

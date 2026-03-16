@@ -1,7 +1,7 @@
 {
   "name": "discord-tts-bot",
   "version": "1.0.0",
-  "description": "Discord TTS Bot with Edge TTS voice",
+  "description": "Discord TTS Bot with Google TTS voice",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -16,6 +16,7 @@
   "dependencies": {
     "@discordjs/voice": "^0.19.1",
     "discord.js": "^14.25.1",
+    "google-tts-api": "^2.0.2",
     "opusscript": "^0.0.8",
     "prism-media": "^1.3.5",
     "ws": "^8.19.0"
