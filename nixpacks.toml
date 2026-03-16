@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "gcc", "gnumake"]
+nixPkgs = ["nodejs_20", "ffmpeg", "python3", "gcc", "gnumake"]
 
 [phases.install]
 cmds = [
   "npm install",
-  "pip install edge-tts"
+  "pip install edge-tts --break-system-packages"
 ]
 
 [start]
