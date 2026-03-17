@@ -23,22 +23,27 @@ if (!TOKEN) {
 }
 
 // =============================================
-// CẤU HÌNH AI — DeepSeek
+// CẤU HÌNH AI
+// Ưu tiên: Groq (miễn phí) → OpenAI (trả phí)
 // =============================================
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 let openai = null;
 let aiProvider = null;
 
-if (DEEPSEEK_API_KEY) {
+if (GROQ_API_KEY) {
   openai = new OpenAI({
-    apiKey: DEEPSEEK_API_KEY,
-    baseURL: 'https://api.deepseek.com',
+    apiKey: GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
   });
-  aiProvider = 'DeepSeek';
+  aiProvider = 'Groq (miễn phí)';
+} else if (OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  aiProvider = 'OpenAI';
 }
 
-const AI_MODEL = 'deepseek-chat';
+const AI_MODEL = GROQ_API_KEY ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
 
 const AI_SYSTEM_PROMPT = `Bạn là một AI assistant thông minh và thân thiện được tích hợp vào Discord.
 Hãy trả lời ngắn gọn, rõ ràng và phù hợp với ngữ cảnh chat Discord.
@@ -70,9 +75,9 @@ async function getAIResponse(userId, userMessage) {
 // =============================================
 
 // Webhook 1: log xóa & chỉnh sửa tin nhắn
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1482999564117213246/NZFML5GXAKLUUQSW0JVUP6TCI5MZINV1RBBFE6G_TWRFX1S_B08WUTE3LWU752AUO';
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1482999564117213246/nZfml5gXAkLuuqS-W0jvUp6tCi-5mZINV1RbbfE6-G_TwRFx1S_b08wuTE3LWu752AUo';
 // Webhook 2: log lệnh .al
-const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/C5E4H1TJLSFPTNJQMBGPEKL0YDSUWD8LZBEB9KZG3LS2_QFGQCV2XYZ6XVNABS4YGEFZ';
+const AL_WEBHOOK_URL = 'https://discord.com/api/webhooks/1483113899271262290/c5e4h1TjLSfPtNJqMBGPekl0yDsUWD8LzBEb9kZG3LS2_QfgqCV2xYZ6XvNAbs4ygEFZ';
 const PREFIX = '.';
 const VOICE = 'vi';
 
@@ -126,7 +131,7 @@ client.once('ready', async () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
   console.log(`Prefix: ${PREFIX}`);
   if (openai) console.log(`🤖 AI đã sẵn sàng — Provider: ${aiProvider} | Model: ${AI_MODEL}`);
-  else console.warn('⚠️ AI bị tắt — thêm DEEPSEEK_API_KEY vào biến môi trường Railway');
+  else console.warn('⚠️ AI bị tắt — thêm GROQ_API_KEY (miễn phí) hoặc OPENAI_API_KEY vào biến môi trường');
 
   // Kiểm tra webhook 1 khi khởi động
   if (webhookClient) {
@@ -469,7 +474,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) {
       clearInterval(typingInterval);
       if (err.status === 429 || err.message?.includes('429')) {
-        return message.reply('❌ **Hết quota DeepSeek!** Vào https://platform.deepseek.com để nạp thêm credit.');
+        return message.reply('❌ **Tài khoản OpenAI hết quota!** Vào https://platform.openai.com/account/billing để nạp tiền.');
       }
       message.reply('⚠️ Lỗi khi gọi AI. Vui lòng thử lại.');
     }
@@ -532,8 +537,9 @@ client.on('messageCreate', async (message) => {
         console.error('Lỗi OpenAI:', aiErr);
         if (aiErr.status === 429 || aiErr.message?.includes('429')) {
           return message.channel.send(
-            '❌ **Hết quota DeepSeek!**\n' +
-            '> Vào **https://platform.deepseek.com** → nạp thêm credit hoặc kiểm tra tài khoản.'
+            '❌ **Hết quota AI!**\n' +
+            '> Dùng **Groq miễn phí**: đăng ký tại https://console.groq.com → lấy API key → thêm vào Railway với tên `GROQ_API_KEY`\n' +
+            '> Hoặc nạp tiền OpenAI tại https://platform.openai.com/account/billing'
           );
         }
         return message.channel.send(`⚠️ Lỗi kết nối AI: ${aiErr.message}`);
