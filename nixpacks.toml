@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs", "ffmpeg", "python3", "make", "gcc", "pkg-config"]
+nixPkgs = ["nodejs", "ffmpeg", "gcc", "python3", "pkg-config"]
 
 [phases.install]
 cmds = ["npm install --ignore-scripts"]
