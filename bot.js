@@ -6,7 +6,7 @@ const axios = require('axios');
 const PREFIX = '.';
 const TOKEN = process.env.DISCORD_TOKEN;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-const VOICE = 'vi-VN-HoaiMyNeural'; // Giọng nữ mặc định
+const VOICE = 'vi-VN-HoaiMyNeural';
 
 const client = new Client({
     intents: [
@@ -17,7 +17,6 @@ const client = new Client({
     ]
 });
 
-// Lưu trữ kết nối voice
 let currentConnection = null;
 let player = createAudioPlayer();
 
@@ -46,10 +45,9 @@ async function askDeepSeek(question) {
 }
 
 client.on('messageCreate', async (message) => {
-    // Bỏ qua tin nhắn của bot
     if (message.author.bot) return;
 
-    // 1. XỬ LÝ KHI BỊ TAG
+    // XỬ LÝ KHI BỊ TAG
     if (message.mentions.has(client.user)) {
         const userQuery = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
@@ -60,7 +58,6 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
         const answer = await askDeepSeek(userQuery);
 
-        // Xử lý câu trả lời dài
         if (answer.length > 2000) {
             const chunks = answer.match(/[\s\S]{1,1900}/g) || [];
             for (const chunk of chunks) {
@@ -72,7 +69,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // 2. XỬ LÝ LỆNH CÓ DẤU .
+    // XỬ LÝ LỆNH CÓ DẤU .
     if (!message.content.startsWith(PREFIX)) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
@@ -99,7 +96,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Lệnh .v [nội dung] - Đọc text
+    // Lệnh .v
     else if (command === 'v') {
         const text = args.join(' ');
         if (!text) {
@@ -135,7 +132,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Lệnh .ask (giữ lại để tương thích)
+    // Lệnh .ask
     else if (command === 'ask') {
         const question = args.join(' ');
         if (!question) {
@@ -159,20 +156,19 @@ client.on('messageCreate', async (message) => {
     else if (command === 'help') {
         const helpMessage = `
 **Danh sách lệnh:**
-\`.join\` - Bot vào kênh thoại của bạn
-\`.v [nội dung]\` - Bot đọc nội dung bằng giọng nói
+\`.join\` - Bot vào kênh thoại
+\`.v [nội dung]\` - Bot đọc nội dung
 \`.leave\` - Bot rời kênh thoại
-\`.ask [câu hỏi]\` - Hỏi AI DeepSeek (hoặc tag bot + câu hỏi)
+\`.ask [câu hỏi]\` - Hỏi AI DeepSeek
 \`.help\` - Hiển thị lệnh này
 
-**Ví dụ tag bot:**
+**Hoặc tag bot + câu hỏi:**
 @Skibididi 1+1 bằng mấy?
 `;
         message.reply(helpMessage);
     }
 });
 
-// Xử lý lỗi player
 player.on('error', error => {
     console.error('Lỗi player:', error);
 });
