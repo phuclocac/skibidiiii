@@ -1,8 +1,5 @@
-[phases.setup]
-nixPkgs = ["nodejs", "ffmpeg", "gcc", "python3", "pkg-config"]
-
 [phases.install]
-cmds = ["npm install --ignore-scripts"]
+cmds = ["npm install"]
 
-[phases.build]
-cmds = ["npm rebuild --build-from-source"]
+[start]
+cmd = "node bot.js"
